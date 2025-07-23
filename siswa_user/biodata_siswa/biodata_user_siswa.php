@@ -2,7 +2,7 @@
 header('Content-Type: application/json');
 
 // Koneksi ke database
-require_once __DIR__ . '/../config/db.php';
+require_once __DIR__ . '/../../config/db.php';
 
 // Cek koneksi
 if (!$db) {

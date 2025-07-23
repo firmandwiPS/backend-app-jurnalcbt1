@@ -1,6 +1,6 @@
 <?php
 header("Content-Type: application/json");
-require_once __DIR__ . '/../config/db.php';
+require_once __DIR__ . '/../../config/db.php';
 
 $response = [
     'success' => false,
@@ -42,7 +42,7 @@ try {
     }
 
     // 3. Persiapkan Direktori Upload
-    $uploadDir = __DIR__ . '/../../uploads/biodata_siswa/';
+    $uploadDir = __DIR__ . '/../uploads/';
     
     if (!file_exists($uploadDir)) {
         if (!mkdir($uploadDir, 0755, true)) {
@@ -52,9 +52,9 @@ try {
 
     // 4. Generate Nama File Unik
     $fileExt = pathinfo($file['name'], PATHINFO_EXTENSION);
-    $filename = 'siswa_' . $nis . '_' . date('YmdHis') . '.' . $fileExt;
+    $filename = 'siswa_' . $nis . '_' . time() . '.' . $fileExt;
     $targetPath = $uploadDir . $filename;
-    $relativePath = '/uploads/biodata_siswa/' . $filename;
+    $relativePath = 'uploads/' . $filename;
 
     // 5. Pindahkan File ke Folder Uploads
     if (!move_uploaded_file($file['tmp_name'], $targetPath)) {
@@ -62,7 +62,7 @@ try {
     }
 
     // 6. Update Database
-    $stmt = $pdo->prepare("UPDATE siswa SET foto = ? WHERE nis = ?");
+    $stmt = $db->prepare("UPDATE biodata_siswa SET foto = ? WHERE nis = ?");
     if (!$stmt->execute([$relativePath, $nis])) {
         // Hapus file jika gagal update database
         unlink($targetPath);
