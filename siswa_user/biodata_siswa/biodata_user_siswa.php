@@ -1,87 +1,91 @@
 <?php
-header('Content-Type: application/json');
+header('Content-Type: application/json; charset=UTF-8');
+header('Access-Control-Allow-Origin: *');
+header('Access-Control-Allow-Methods: GET');
 
-// Koneksi ke database
 require_once __DIR__ . '/../../config/db.php';
 
-// Cek koneksi
-if (!$db) {
+// Set charset
+mysqli_set_charset($db, 'utf8mb4');
+
+// Check if NIS parameter exists
+if (!isset($_GET['nis'])) {
+    http_response_code(400);
     echo json_encode([
-        'success' => false,
-        'message' => 'Koneksi database gagal: ' . mysqli_connect_error(),
-        'data' => []
+        'status' => 'error',
+        'message' => 'Parameter NIS is required'
     ]);
     exit;
 }
 
-// Tangkap parameter NIS
-$nis = isset($_GET['nis']) ? mysqli_real_escape_string($db, $_GET['nis']) : null;
+$nis = mysqli_real_escape_string($db, $_GET['nis']);
 
-if (!$nis) {
-    echo json_encode([
-        'success' => false,
-        'message' => 'NIS tidak diberikan',
-        'data' => []
-    ]);
-    exit;
-}
+// Query to get student biodata
+$query = "SELECT 
+            bs.nis, 
+            bs.nama_lengkap, 
+            bs.kelas, 
+            bs.jurusan,
+            bs.tempat_lahir,
+            DATE_FORMAT(bs.tanggal_lahir, '%d-%m-%Y') AS tanggal_lahir,
+            bs.alamat_rumah,
+            bs.no_hp,
+            bp.tempat_pkl,
+            bp.alamat_pkl,
+            bp.bidang_kerja,
+            bp.pembimbing,
+            DATE_FORMAT(bp.mulai_pkl, '%d-%m-%Y') AS mulai_pkl,
+            DATE_FORMAT(bp.selesai_pkl, '%d-%m-%Y') AS selesai_pkl,
+            bp.status_pkl,
+            bp.catatan_pkl
+          FROM biodata_siswa bs
+          LEFT JOIN biodata_pkl_siswa bp ON bs.nis = bp.nis
+          WHERE bs.nis = '$nis'";
 
-// Query ambil data siswa
-$query = "SELECT * FROM biodata_siswa WHERE nis = '$nis'";
 $result = mysqli_query($db, $query);
 
 if (!$result) {
+    http_response_code(500);
     echo json_encode([
-        'success' => false,
-        'message' => 'Query error: ' . mysqli_error($db),
-        'data' => []
+        'status' => 'error',
+        'message' => 'Database error: ' . mysqli_error($db)
     ]);
     exit;
 }
 
-$data = [];
-$base_url = "http://192.168.1.4/backend-app-jurnalcbt1/uploads/";
-$upload_dir = __DIR__ . '/../uploads/';
-
-while ($row = mysqli_fetch_assoc($result)) {
-    $foto_nama = $row['foto'] ?? '';
-    $foto_path = $upload_dir . $foto_nama;
-
-    $foto_url = (file_exists($foto_path) && !empty($foto_nama))
-        ? $base_url . $foto_nama
-        : $base_url . 'default.jpg';
-
-    $data[] = [
-        'nis' => $row['nis'],
-        'nama_lengkap' => $row['nama_lengkap'],
-        'kelas' => $row['kelas'],
-        'jurusan' => $row['jurusan'],
-        'tempat_lahir' => $row['tempat_lahir'],
-        'tanggal_lahir' => $row['tanggal_lahir'],
-        'alamat_rumah' => $row['alamat_rumah'],
-        'no_hp' => $row['no_hp'],
-        'tempat_pkl' => $row['tempat_pkl'],
-        'alamat_pkl' => $row['alamat_pkl'],
-        'bidang_kerja' => $row['bidang_kerja'],
-        'pembimbing' => $row['pembimbing'],
-        'mulai_pkl' => $row['mulai_pkl'],
-        'selesai_pkl' => $row['selesai_pkl'],
-        'status_pkl' => $row['status_pkl'],
-        'catatan_pkl' => $row['catatan_pkl'],
-        'foto' => $foto_url
+if (mysqli_num_rows($result) > 0) {
+    $data = mysqli_fetch_assoc($result);
+    
+    $response = [
+        'status' => 'success',
+        'data' => [
+            'nis' => $data['nis'],
+            'nama_lengkap' => $data['nama_lengkap'],
+            'kelas' => $data['kelas'],
+            'jurusan' => $data['jurusan'],
+            'tempat_lahir' => $data['tempat_lahir'] ?? '-',
+            'tanggal_lahir' => $data['tanggal_lahir'] ?? '-',
+            'alamat_rumah' => $data['alamat_rumah'] ?? '-',
+            'no_hp' => $data['no_hp'] ?? '-',
+            'tempat_pkl' => $data['tempat_pkl'] ?? 'Belum ada',
+            'alamat_pkl' => $data['alamat_pkl'] ?? 'Belum ada',
+            'bidang_kerja' => $data['bidang_kerja'] ?? 'Belum ada',
+            'pembimbing' => $data['pembimbing'] ?? 'Belum ada',
+            'mulai_pkl' => $data['mulai_pkl'] ?? 'Belum ada',
+            'selesai_pkl' => $data['selesai_pkl'] ?? 'Belum ada',
+            'status_pkl' => $data['status_pkl'] ?? 'Belum PKL',
+            'catatan_pkl' => $data['catatan_pkl'] ?? 'Belum ada'
+        ]
     ];
+    
+    echo json_encode($response, JSON_UNESCAPED_UNICODE);
+} else {
+    http_response_code(404);
+    echo json_encode([
+        'status' => 'error',
+        'message' => 'Student data not found for NIS: ' . $nis
+    ]);
 }
 
-if (count($data) > 0) {
-    echo json_encode([
-        'success' => true,
-        'message' => 'Data ditemukan',
-        'data' => $data
-    ]);
-} else {
-    echo json_encode([
-        'success' => false,
-        'message' => 'Data tidak ditemukan',
-        'data' => []
-    ]);
-}
+mysqli_close($db);
+?>
