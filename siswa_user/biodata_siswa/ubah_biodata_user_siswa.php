@@ -1,113 +1,88 @@
 <?php
 header("Content-Type: application/json; charset=UTF-8");
-header("Access-Control-Allow-Origin: *");
-header("Access-Control-Allow-Methods: POST");
-header("Access-Control-Allow-Headers: Content-Type, Access-Control-Allow-Headers");
-
 require_once __DIR__ . '/../../config/db.php';
-
-// Set charset
 mysqli_set_charset($db, "utf8mb4");
 
-// Get POST data
-$json = file_get_contents('php://input');
-$data = json_decode($json, true);
-
-// Validate NIS
-if (!isset($data['nis'])) {
-    http_response_code(400);
-    echo json_encode(["status" => "error", "message" => "NIS is required"]);
+if (!isset($_POST['nis']) || empty($_POST['nis'])) {
+    echo json_encode(["status" => "error", "message" => "NIS tidak ditemukan"]);
     exit;
 }
 
-$nis = mysqli_real_escape_string($db, $data['nis']);
-
-// Initialize response
+$nis = mysqli_real_escape_string($db, $_POST['nis']);
 $response = [
     "status" => "success",
     "messages" => [],
-    "affected_rows" => [
-        "biodata" => 0,
-        "pkl" => 0
-    ]
+    "affected_rows" => ["biodata" => 0, "pkl" => 0]
 ];
 
-// Start transaction
+$biodata = $_POST['biodata'] ?? [];
+$pkl = $_POST['pkl'] ?? [];
+
 mysqli_begin_transaction($db);
 
 try {
-    // Update biodata_siswa if there are fields to update
-    if (isset($data['biodata']) && is_array($data['biodata'])) {
-        $biodataUpdates = [];
-        $allowedBiodataFields = [
-            'nama_lengkap', 'kelas', 'jurusan', 
-            'tempat_lahir', 'tanggal_lahir', 
-            'alamat_rumah', 'no_hp'
-        ];
-        
-        foreach ($allowedBiodataFields as $field) {
-            if (isset($data['biodata'][$field])) {
-                $value = $data['biodata'][$field] !== null ? 
-                    "'" . mysqli_real_escape_string($db, $data['biodata'][$field]) . "'" : "NULL";
-                $biodataUpdates[] = "$field = $value";
-            }
-        }
-        
-        if (!empty($biodataUpdates)) {
-            $query = "UPDATE biodata_siswa SET " . implode(', ', $biodataUpdates) . " WHERE nis = '$nis'";
-            if (!mysqli_query($db, $query)) {
-                throw new Exception("Error updating biodata: " . mysqli_error($db));
-            }
-            $response['affected_rows']['biodata'] = mysqli_affected_rows($db);
-            $response['messages'][] = "Biodata updated successfully";
+    // Update Biodata
+    $biodataFields = ['nama_lengkap', 'kelas', 'jurusan', 'tempat_lahir', 'tanggal_lahir', 'alamat_rumah', 'no_hp'];
+    $biodataSet = [];
+
+    foreach ($biodataFields as $field) {
+        if (isset($biodata[$field])) {
+            $val = mysqli_real_escape_string($db, $biodata[$field]);
+            $biodataSet[] = "`$field` = '$val'";
         }
     }
 
-    // Update biodata_pkl_siswa if there are fields to update
-    if (isset($data['pkl']) && is_array($data['pkl'])) {
-        $pklUpdates = [];
-        $allowedPklFields = [
-            'tempat_pkl', 'alamat_pkl', 'bidang_kerja',
-            'pembimbing', 'mulai_pkl', 'selesai_pkl',
-            'status_pkl', 'catatan_pkl'
-        ];
-        
-        foreach ($allowedPklFields as $field) {
-            if (isset($data['pkl'][$field])) {
-                $value = $data['pkl'][$field] !== null ? 
-                    "'" . mysqli_real_escape_string($db, $data['pkl'][$field]) . "'" : "NULL";
-                $pklUpdates[] = "$field = $value";
-            }
+    if (!empty($biodataSet)) {
+        $sql = "UPDATE biodata_siswa SET " . implode(", ", $biodataSet) . " WHERE nis = '$nis'";
+        if (!mysqli_query($db, $sql)) {
+            throw new Exception("Gagal update biodata: " . mysqli_error($db));
         }
-        
-        if (!empty($pklUpdates)) {
-            $query = "UPDATE biodata_pkl_siswa SET " . implode(', ', $pklUpdates) . " WHERE nis = '$nis'";
-            if (!mysqli_query($db, $query)) {
-                throw new Exception("Error updating PKL data: " . mysqli_error($db));
-            }
-            $response['affected_rows']['pkl'] = mysqli_affected_rows($db);
-            $response['messages'][] = "PKL data updated successfully";
+        $response['affected_rows']['biodata'] = mysqli_affected_rows($db);
+        $response['messages'][] = "Biodata berhasil diperbarui.";
+    }
+
+    // Update/Insert PKL
+    $pklFields = ['tempat_pkl', 'alamat_pkl', 'bidang_kerja', 'pembimbing', 'mulai_pkl', 'selesai_pkl', 'status_pkl', 'catatan_pkl'];
+    $pklData = [];
+
+    foreach ($pklFields as $field) {
+        if (isset($pkl[$field])) {
+            $val = mysqli_real_escape_string($db, $pkl[$field]);
+            $pklData[$field] = $val;
         }
     }
 
-    // Commit transaction if all queries succeeded
+    if (!empty($pklData)) {
+        $cek = mysqli_query($db, "SELECT id FROM biodata_pkl_siswa WHERE nis = '$nis'");
+        if (!$cek) {
+            throw new Exception("Gagal cek PKL: " . mysqli_error($db));
+        }
+
+        if (mysqli_num_rows($cek) > 0) {
+            // Update PKL
+            $set = [];
+            foreach ($pklData as $key => $val) {
+                $set[] = "`$key` = '$val'";
+            }
+            $sql = "UPDATE biodata_pkl_siswa SET " . implode(", ", $set) . " WHERE nis = '$nis'";
+        } else {
+            // Insert PKL
+            $cols = array_merge(['nis'], array_keys($pklData));
+            $vals = array_merge(["'$nis'"], array_map(fn($v) => "'$v'", array_values($pklData)));
+            $sql = "INSERT INTO biodata_pkl_siswa (" . implode(",", $cols) . ") VALUES (" . implode(",", $vals) . ")";
+        }
+
+        if (!mysqli_query($db, $sql)) {
+            throw new Exception("Gagal simpan PKL: " . mysqli_error($db));
+        }
+
+        $response['affected_rows']['pkl'] = mysqli_affected_rows($db);
+        $response['messages'][] = "Data PKL berhasil disimpan.";
+    }
+
     mysqli_commit($db);
-    
-    // If no updates were made to either table
-    if ($response['affected_rows']['biodata'] == 0 && $response['affected_rows']['pkl'] == 0) {
-        $response['messages'][] = "No changes were made (data already up-to-date)";
-    }
-
+    echo json_encode($response, JSON_UNESCAPED_UNICODE);
 } catch (Exception $e) {
-    // Rollback transaction on error
     mysqli_rollback($db);
-    http_response_code(500);
-    $response = [
-        "status" => "error",
-        "message" => $e->getMessage()
-    ];
+    echo json_encode(["status" => "error", "message" => $e->getMessage()]);
 }
-
-echo json_encode($response);
-mysqli_close($db);
-?>
