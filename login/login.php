@@ -2,7 +2,7 @@
 header('Content-Type: application/json');
 
 // Include koneksi ke database
-require_once '../config/db.php';
+require_once __DIR__ . '/../config/db.php';
 
 // Ambil key akses dari input POST
 $key_akses = isset($_POST['key_akses']) ? $_POST['key_akses'] : '';
