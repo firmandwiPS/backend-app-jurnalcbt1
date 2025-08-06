@@ -15,7 +15,7 @@ if (isset($input["id"])) {
     $query = "DELETE FROM login WHERE id='$id'";
 
     if (mysqli_query($db, $query)) {
-        echo json_encode(["success" => true, "message" => "Data berhasil dihapus"]);
+        echo json_encode(["success" => true, "message" => "Databerhasil dihapus"]);
     } else {
         echo json_encode(["success" => false, "message" => mysqli_error($db)]);
     }
